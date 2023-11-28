@@ -4,6 +4,7 @@ import java.io.*;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.CharBuffer;
+import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.util.zip.GZIPInputStream;
 
@@ -61,6 +62,9 @@ public class DotParkProcessor {
             }
 
             //TODO read packed object chunk
+            if (skipToChunk(gzipStream, chunkList, CHUNK_ID_PACKED_OBJECTS)) {
+                readPackedObjectsChunk(gzipStream, park);
+            }
 
             gzipStream.close();
             dotParkStream.close();
@@ -92,38 +96,77 @@ public class DotParkProcessor {
         return -1;
     }
 
-    private void readUnpackedObjectsChunk(GZIPInputStream gzipStream, Park park) throws IOException {
+    private void readUnpackedObjectsChunk(InputStream is, Park park) throws IOException {
         //Number of sublists / ObjectTypes used
-        short objectTypesCount = readShort(gzipStream);
+        short objectTypesCount = readShort(is);
         for (int i = 0; i < objectTypesCount; ++i) {
-            ObjectCategory sublistObjectCategory = ObjectCategory.byId(readShort(gzipStream));
-            int sublistCount = readInt(gzipStream);
+            int sublistCategoryId = readShort(is);
+            ObjectCategory sublistObjectCategory = ObjectCategory.byId(sublistCategoryId);
+            int sublistCount = readInt(is);
             for (int j = 0; j < sublistCount; ++j) {
-                ObjectFileType oft = ObjectFileType.byId(readByte(gzipStream));
+                ObjectFileType oft = ObjectFileType.byId(readByte(is));
 
                 switch (oft) {
-                    case DESCRIPTOR_NONE:
-                        break;
                     case DESCRIPTOR_DAT:
-                        //TODO
                         ObjectEntry object = new ObjectEntry();
-                        String objData = readFixedLength(gzipStream, 16);
-
+                        String objData = readFixedLength(is, 16);
                         object.setId(objData.substring(4, 12));
                         object.setObjectCategory(sublistObjectCategory);
-
+                        park.getObjectGroupList()[sublistCategoryId].getEntries().add(object);
                         System.out.println(object);
                         break;
                     case DESCRIPTOR_JSON:
                         ParkObjectEntry parkObject = new ParkObjectEntry();
-                        parkObject.setId(readString(gzipStream));
-                        parkObject.setVersion(readString(gzipStream));
+                        parkObject.setId(readString(is));
+                        parkObject.setVersion(readString(is));
+                        park.getObjectGroupList()[sublistCategoryId].getEntries().add(parkObject);
                         System.out.println(parkObject);
                         break;
-
                 }
             }
+            System.out.printf("Detected %d objects of type %s\n", sublistCount, sublistObjectCategory.toString());
         }
+    }
+
+    private void readPackedObjectsChunk(InputStream is, Park park) throws IOException {
+        int objectCount = readInt(is);
+        for (int i = 0; i < objectCount; ++i) {
+            ObjectFileType oft = ObjectFileType.byId(readByte(is) + 1);
+            String objectID;
+            switch (oft) {
+                case DESCRIPTOR_DAT:
+                    System.out.println("Read a DAT object");
+                    String objEntryData = readFixedLength(is, 16);
+                    int objSize = readInt(is);
+                    String objData = readFixedLength(is, objSize);
+
+                    objectID = objEntryData.substring(4, 12);
+
+                    ObjectEntry existingEntry = findObjectIdInPark(park, objectID);
+                    //TODO Read the object data & assign it to an existing objectentry, or create a new one if none exists
+                    break;
+                case DESCRIPTOR_JSON:
+                    System.out.println("Read a JSON/Parkobj object");
+                    //TODO
+                    break;
+                default:
+                    System.out.println("ERROR: Unsupported packed object detected");
+                    break;
+            }
+        }
+    }
+
+    private ObjectEntry findObjectIdInPark(Park park, String objectId) {
+        for (int i = 0; i < park.getObjectGroupList().length; ++i) {
+            ObjectGroup group = park.getObjectGroupList()[i];
+            ObjectEntry existingEntry = group.getEntries().stream().filter(
+                    objectEntry -> objectEntry.getId().equals(objectId)).findFirst()
+                    .orElse(null);
+            if (existingEntry != null) {
+                return existingEntry;
+            }
+        }
+        return null;
     }
 
     private Chunk[] readParkHeader(FileInputStream dotParkStream) throws IOException {
@@ -179,13 +222,22 @@ public class DotParkProcessor {
         return buffer.getLong();
     }
 
-    private String readFixedLength(InputStream is, int length) throws IOException {
-        int maxLength = Math.min(length, BUFFER_SIZE);
+    private String readFixedLength(InputStream is, final int length) throws IOException {
+        int remainingLength = length;
+        StringBuilder sb = new StringBuilder();
+        while (remainingLength > BUFFER_SIZE) {
+            buffer.clear();
+            is.readNBytes(buffer.array(), 0, BUFFER_SIZE);
+            globalFileOffset += BUFFER_SIZE;
+            sb.append(StandardCharsets.UTF_8.decode(buffer));
+            remainingLength -= BUFFER_SIZE;
+        }
         buffer.clear();
-        is.readNBytes(buffer.array(), 0, maxLength);
-        globalFileOffset += maxLength;
+        is.readNBytes(buffer.array(), 0, remainingLength);
+        globalFileOffset += remainingLength;
+        sb.append(StandardCharsets.UTF_8.decode(buffer).toString(), 0, remainingLength);
 
-        return StandardCharsets.UTF_8.decode(buffer).toString().substring(0, maxLength);
+        return sb.toString();
     }
 
     private String readString(InputStream is) throws IOException {
@@ -196,6 +248,7 @@ public class DotParkProcessor {
         do {
             b = (char) is.read();
             sb.append(b);
+            ++globalFileOffset;
         }
         while (b != '\0');
         return sb.toString();

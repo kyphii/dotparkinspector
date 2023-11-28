@@ -13,7 +13,7 @@ public enum ObjectFileType {
         return typeId;
     }
 
-    public static ObjectFileType byId(byte typeId) {
+    public static ObjectFileType byId(int typeId) {
         return ObjectFileType.values()[typeId];
     }
 }
