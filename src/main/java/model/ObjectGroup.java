@@ -1,14 +1,14 @@
 package model;
 
 public class ObjectGroup {
-    final ObjectType type;
+    final ObjectCategory type;
     private int count;
 
-    public ObjectGroup(ObjectType type) {
+    public ObjectGroup(ObjectCategory type) {
         this.type = type;
     }
 
-    public ObjectType getType() {
+    public ObjectCategory getType() {
         return type;
     }
 

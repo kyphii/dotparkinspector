@@ -1,6 +1,6 @@
 package model;
 
-public enum ObjectType {
+public enum ObjectCategory {
     RIDE("ride"),
     SMALL_SCENERY("small_scenery"),
     LARGE_SCENERY("large_scenery"),
@@ -22,7 +22,7 @@ public enum ObjectType {
 
     private final String typeID;
 
-    ObjectType(String typeID) {
+    ObjectCategory(String typeID) {
         this.typeID = typeID;
     }
 
@@ -31,11 +31,11 @@ public enum ObjectType {
         return typeID;
     }
 
-    public static ObjectType byId(int id) {
-        return ObjectType.values()[id];
+    public static ObjectCategory byId(int id) {
+        return ObjectCategory.values()[id];
     }
 
     public static int count() {
-        return ObjectType.values().length;
+        return ObjectCategory.values().length;
     }
 }

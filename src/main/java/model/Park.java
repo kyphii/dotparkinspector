@@ -11,9 +11,9 @@ public class Park {
         this.parkFileName = parkFileName;
         this.parkFilePath = parkFilePath;
 
-        objectGroupList = new ObjectGroup[ObjectType.count()];
+        objectGroupList = new ObjectGroup[ObjectCategory.count()];
         for (int i = 0; i < objectGroupList.length; ++i) {
-            objectGroupList[i] = new ObjectGroup(ObjectType.byId(i));
+            objectGroupList[i] = new ObjectGroup(ObjectCategory.byId(i));
         }
     }
 

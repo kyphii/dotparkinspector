@@ -1,10 +1,10 @@
-import model.Chunk;
-import model.ObjectType;
-import model.Park;
+import model.*;
 
 import java.io.*;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
+import java.nio.CharBuffer;
+import java.nio.charset.StandardCharsets;
 import java.util.zip.GZIPInputStream;
 
 public class DotParkProcessor {
@@ -19,7 +19,9 @@ public class DotParkProcessor {
     public final static int SCAN_RESULT_IO_EXCEPTION = 1;
     public final static int SCAN_RESULT_BAD_FILE = 2;
 
-    private final ByteBuffer numberBuffer;
+    public final static int BUFFER_SIZE = 1024;
+
+    private final ByteBuffer buffer;
 
     //File position tracker
     private long globalFileOffset;
@@ -28,8 +30,8 @@ public class DotParkProcessor {
     private int parkFileTargetVersion;
 
     public DotParkProcessor() {
-        numberBuffer = ByteBuffer.allocate(8);
-        numberBuffer.order(ByteOrder.LITTLE_ENDIAN);
+        buffer = ByteBuffer.allocate(BUFFER_SIZE);
+        buffer.order(ByteOrder.LITTLE_ENDIAN);
     }
 
     public int scanParkFile(final File parkFilePath) {
@@ -90,16 +92,36 @@ public class DotParkProcessor {
         return -1;
     }
 
-    private void readUnpackedObjectsChunk(GZIPInputStream compressedChunkStream, Park park) throws IOException {
+    private void readUnpackedObjectsChunk(GZIPInputStream gzipStream, Park park) throws IOException {
         //Number of sublists / ObjectTypes used
-        short objectTypesCount = readShort(compressedChunkStream);
+        short objectTypesCount = readShort(gzipStream);
         for (int i = 0; i < objectTypesCount; ++i) {
-            short sublistTypeId = readShort(compressedChunkStream);
-            ObjectType sublistObjectType = ObjectType.byId(sublistTypeId);
-            int sublistCount = readInt(compressedChunkStream);
-            if (sublistCount > 0) {
-                //TODO
-                System.out.printf("%s : %d%n", sublistObjectType, sublistCount);
+            ObjectCategory sublistObjectCategory = ObjectCategory.byId(readShort(gzipStream));
+            int sublistCount = readInt(gzipStream);
+            for (int j = 0; j < sublistCount; ++j) {
+                ObjectFileType oft = ObjectFileType.byId(readByte(gzipStream));
+
+                switch (oft) {
+                    case DESCRIPTOR_NONE:
+                        break;
+                    case DESCRIPTOR_DAT:
+                        //TODO
+                        ObjectEntry object = new ObjectEntry();
+                        String objData = readFixedLength(gzipStream, 16);
+
+                        object.setId(objData.substring(4, 12));
+                        object.setObjectCategory(sublistObjectCategory);
+
+                        System.out.println(object);
+                        break;
+                    case DESCRIPTOR_JSON:
+                        ParkObjectEntry parkObject = new ParkObjectEntry();
+                        parkObject.setId(readString(gzipStream));
+                        parkObject.setVersion(readString(gzipStream));
+                        System.out.println(parkObject);
+                        break;
+
+                }
             }
         }
     }
@@ -129,24 +151,53 @@ public class DotParkProcessor {
         is.skipNBytes(bytesToSkip);
     }
 
+    private byte readByte(InputStream is) throws IOException {
+        buffer.clear();
+        is.readNBytes(buffer.array(), 0, 4);
+        globalFileOffset += 4; /// Bytes and Shorts are saved in 4-bytes in .park
+        return buffer.get();
+    }
+
     private short readShort(InputStream is) throws IOException {
-        numberBuffer.clear();
-        is.readNBytes(numberBuffer.array(), 0, 4); /// !!!
+        buffer.clear();
+        is.readNBytes(buffer.array(), 0, 4); /// !!!
         globalFileOffset += 4; /// Shorts still take 4 bytes in .park format
-        return numberBuffer.getShort();
+        return buffer.getShort();
     }
 
     private int readInt(InputStream is) throws IOException {
-        numberBuffer.clear();
-        is.readNBytes(numberBuffer.array(), 0, 4);
+        buffer.clear();
+        is.readNBytes(buffer.array(), 0, 4);
         globalFileOffset += 4;
-        return numberBuffer.getInt();
+        return buffer.getInt();
     }
 
     private long readLong(InputStream is) throws IOException {
-        numberBuffer.clear();
-        is.readNBytes(numberBuffer.array(), 0, 8);
+        buffer.clear();
+        is.readNBytes(buffer.array(), 0, 8);
         globalFileOffset += 8;
-        return numberBuffer.getLong();
+        return buffer.getLong();
+    }
+
+    private String readFixedLength(InputStream is, int length) throws IOException {
+        int maxLength = Math.min(length, BUFFER_SIZE);
+        buffer.clear();
+        is.readNBytes(buffer.array(), 0, maxLength);
+        globalFileOffset += maxLength;
+
+        return StandardCharsets.UTF_8.decode(buffer).toString().substring(0, maxLength);
+    }
+
+    private String readString(InputStream is) throws IOException {
+        //Read a null-terminated string
+        //there's probably a more optimal way to do this
+        StringBuilder sb = new StringBuilder();
+        char b = '1'; //throwaway value
+        do {
+            b = (char) is.read();
+            sb.append(b);
+        }
+        while (b != '\0');
+        return sb.toString();
     }
 }
