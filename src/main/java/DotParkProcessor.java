@@ -94,10 +94,7 @@ public class DotParkProcessor {
         //Number of sublists / ObjectTypes used
         short objectTypesCount = readShort(compressedChunkStream);
         for (int i = 0; i < objectTypesCount; ++i) {
-            //TODO Something isn't quite right here
             short sublistTypeId = readShort(compressedChunkStream);
-            System.out.printf("type %d, offset %d", sublistTypeId, globalFileOffset);
-            System.out.println();
             ObjectType sublistObjectType = ObjectType.byId(sublistTypeId);
             int sublistCount = readInt(compressedChunkStream);
             if (sublistCount > 0) {
@@ -134,8 +131,8 @@ public class DotParkProcessor {
 
     private short readShort(InputStream is) throws IOException {
         numberBuffer.clear();
-        is.readNBytes(numberBuffer.array(), 0, 2);
-        globalFileOffset += 2;
+        is.readNBytes(numberBuffer.array(), 0, 4); /// !!!
+        globalFileOffset += 4; /// Shorts still take 4 bytes in .park format
         return numberBuffer.getShort();
     }
 
